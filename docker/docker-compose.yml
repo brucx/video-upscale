@@ -1,0 +1,21 @@
+# docker-compose for local dev/test (GPU required)
+# Usage:
+#   docker compose run --rm upscale \
+#     --input /data/input.mp4 --output /data/output_4x.mp4 \
+#     --model purevision --scale 4 --gpu 0 --codec hevc
+
+services:
+  upscale:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.inference
+    image: brucx/video-upscale:latest
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=video,compute,utility
+      - MODELS_DIR=/app/models
+    volumes:
+      - ${MODELS_DIR:-../models}:/app/models
+      - ${DATA_DIR:-/tmp}:/data
+    entrypoint: ["python", "upscale.py"]

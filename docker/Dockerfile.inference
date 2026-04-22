@@ -1,0 +1,36 @@
+# Video Upscale Inference Image
+# Base: TensorRT 24.05 (CUDA 12.4, cuDNN 9.x, TensorRT 10.x)
+# Includes: PyNvVideoCodec, pycuda, onnxruntime-gpu, ffmpeg
+FROM nvcr.io/nvidia/tensorrt:24.05-py3
+
+WORKDIR /app
+
+# System deps: ffmpeg + build tools for pycuda
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    ffmpeg \
+    libgl1 \
+    libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python deps (pycuda needs nvcc from the TRT base image)
+COPY pyproject.toml ./
+RUN pip install --no-cache-dir \
+    "numpy>=1.24,<2.0" \
+    "pycuda>=2024.1" \
+    "PyNvVideoCodec>=2.0.2" \
+    "onnxruntime-gpu>=1.18.0"
+
+# Copy source
+COPY upscale.py ./
+COPY src ./src
+
+# Models go in at runtime via volume mount
+# docker run -v /path/to/models:/app/models ...
+RUN mkdir -p /app/models
+
+# TRT engine cache also lives under models/trt_cache/ (GPU-specific, mount or build once)
+ENV MODELS_DIR=/app/models
+
+# Default: show help
+CMD ["python", "upscale.py", "--help"]
