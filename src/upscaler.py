@@ -50,11 +50,15 @@ class OnnxUpscaler:
         models_dir: Path | None = None,
         tile_size: int = 512,
         overlap: int = 16,
+        device_id: int = 0,
+        cuda_context=None,
     ):
         self.model_name = model_name
         self.tile_size = tile_size
         self.overlap = overlap
         self.scale = 2
+        self.device_id = device_id
+        self.cuda_context = cuda_context
 
         if models_dir is None:
             models_dir = DEFAULT_MODELS_DIR
@@ -94,6 +98,7 @@ class OnnxUpscaler:
             providers.append((
                 "TensorrtExecutionProvider",
                 {
+                    "device_id": self.device_id,
                     "trt_max_workspace_size": 4 * 1024 ** 3,
                     "trt_fp16_enable": True,
                     "trt_engine_cache_enable": True,
@@ -103,7 +108,13 @@ class OnnxUpscaler:
             log.info(f"TensorRT enabled, cache: {trt_cache_path}")
 
         if "CUDAExecutionProvider" in available:
-            providers.append(("CUDAExecutionProvider", {"cudnn_conv_algo_search": "EXHAUSTIVE"}))
+            providers.append((
+                "CUDAExecutionProvider",
+                {
+                    "device_id": self.device_id,
+                    "cudnn_conv_algo_search": "EXHAUSTIVE",
+                }
+            ))
             log.info("CUDA enabled")
 
         providers.append("CPUExecutionProvider")
@@ -198,6 +209,13 @@ class OnnxUpscaler:
 
         h_output = self.session.run([self.output_name], {self.input_name: h_input})[0]
 
+        if self.cuda_context:
+            try:
+                cuda.Context.pop()
+            except cuda.LogicError:
+                pass
+            self.cuda_context.push()
+
         if h_output.dtype == np.float16:
             h_output = h_output.astype(np.float32)
 
@@ -242,6 +260,13 @@ class OnnxUpscaler:
                     h_tile = h_tile.astype(np.float16)
 
                 h_tile_out = self.session.run([self.output_name], {self.input_name: h_tile})[0]
+
+                if self.cuda_context:
+                    try:
+                        cuda.Context.pop()
+                    except cuda.LogicError:
+                        pass
+                    self.cuda_context.push()
 
                 if h_tile_out.dtype == np.float16:
                     h_tile_out = h_tile_out.astype(np.float32)

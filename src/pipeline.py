@@ -79,20 +79,10 @@ def process_video(
 
         print(f"\n[1] Initializing on GPU {gpu_id}...")
 
-        color_converter = PitchAwareGPUColorConverter()
-        print("   - Color converter ready")
-
-        upscaler = OnnxUpscaler(
-            model_name=model_name,
-            models_dir=models_dir,
-            tile_size=tile_size,
-            overlap=overlap,
-        )
-        print(f"   - Upscaler ready: {model_name}")
-
         decode_stream = cuda.Stream()
         process_stream = cuda.Stream()
         encode_stream = cuda.Stream()
+        print("   - CUDA streams ready")
 
         nv_dmx = nvc.CreateDemuxer(filename=input_path)
         fps = nv_dmx.FrameRate()
@@ -181,6 +171,25 @@ def process_video(
             d_nchw_intermediate = cuda.mem_alloc(3 * (width * 2) * (height * 2) * 4)
         else:
             d_nchw_intermediate = None
+
+        upscaler = OnnxUpscaler(
+            model_name=model_name,
+            models_dir=models_dir,
+            tile_size=tile_size,
+            overlap=overlap,
+            device_id=gpu_id,
+            cuda_context=ctx,
+        )
+        print(f"   - Upscaler ready: {model_name}")
+
+        try:
+            cuda.Context.pop()
+        except cuda.LogicError:
+            pass
+        ctx.push()
+
+        color_converter = PitchAwareGPUColorConverter()
+        print("   - Color converter ready")
 
         frame_count = 0
         processing_times = []
